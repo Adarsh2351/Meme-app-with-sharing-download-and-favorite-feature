@@ -3,9 +3,12 @@ package com.adarsh.memeshareapplication.activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.AsyncTask
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import android.view.View
 import android.widget.ImageButton
@@ -24,12 +27,22 @@ import com.android.volley.toolbox.JsonObjectRequest
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.load.resource.gif.GifDrawable
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import java.nio.ByteBuffer
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var btnShare: ImageButton
+    private lateinit var btnDownload: ImageButton
     private lateinit var btnFavorite: ImageButton
     private lateinit var btnNext: ImageButton
     private lateinit var imgMeme: ImageView
@@ -45,6 +58,7 @@ class MainActivity : AppCompatActivity() {
 
 
         imgMeme = findViewById(R.id.imgMeme)
+        btnDownload = findViewById(R.id.btnDownload)
         btnShare = findViewById(R.id.btnShare)
         btnFavorite = findViewById(R.id.btnFavorite)
         btnNext = findViewById(R.id.btnNext)
@@ -150,7 +164,7 @@ class MainActivity : AppCompatActivity() {
                 if (result) {
                     Toast.makeText(
                         this,
-                        "Meme added to favourites",
+                        "Meme added to Favorites.\nLong-press \"♥\" icon to see Favorites",
                         Toast.LENGTH_SHORT
                     ).show()
                     btnFavorite.setImageResource(R.drawable.ic_favorite_added)
@@ -181,6 +195,47 @@ class MainActivity : AppCompatActivity() {
                     ).show()
                 }
 
+            }
+
+        }
+        btnDownload.setOnClickListener {
+
+            if (currentImageUrl?.contains(".gif") == true) {
+
+                Toast.makeText(
+                    this@MainActivity,
+                    "Meme Downloaded & saved to gallery",
+                    Toast.LENGTH_SHORT
+                ).show()
+                CoroutineScope(Dispatchers.IO).launch {
+                    saveGif(
+                        Glide.with(this@MainActivity)
+                            .asGif()
+                            .load(currentImageUrl) // sample image
+                            .placeholder(android.R.drawable.progress_indeterminate_horizontal) // need placeholder to avoid issue like glide annotations
+                            .error(android.R.drawable.stat_notify_error) // need error to avoid issue like glide annotations
+                            .submit()
+                            .get()
+                    )
+                }
+
+            } else {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Meme Downloaded & saved to gallery",
+                    Toast.LENGTH_SHORT
+                ).show()
+                CoroutineScope(Dispatchers.IO).launch {
+                    saveImage(
+                        Glide.with(this@MainActivity)
+                            .asBitmap()
+                            .load(currentImageUrl) // sample image
+                            .placeholder(android.R.drawable.progress_indeterminate_horizontal) // need placeholder to avoid issue like glide annotations
+                            .error(android.R.drawable.stat_notify_error) // need error to avoid issue like glide annotations
+                            .submit()
+                            .get()
+                    )
+                }
             }
         }
     }
@@ -219,12 +274,12 @@ class MainActivity : AppCompatActivity() {
             val dialog = AlertDialog.Builder(this@MainActivity)
             dialog.setTitle("Error")
             dialog.setMessage("Internet Connection is not Found")
-            dialog.setPositiveButton("Open Settings") { text, listener ->
+            dialog.setPositiveButton("Open Settings") { _, _ ->
                 val settingsIntent = Intent(Settings.ACTION_WIRELESS_SETTINGS)
                 startActivity(settingsIntent)
                 finish()
             }
-            dialog.setNegativeButton("Cancel") { text, listener ->
+            dialog.setNegativeButton("Cancel") { _, _ ->
                 ActivityCompat.finishAffinity(this@MainActivity)
             }
             dialog.create()
@@ -233,8 +288,85 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    private fun saveImage(image: Bitmap): String? {
 
-    class DBAsyncTask(val context: Context, val memeEntity: MemeEntity, val mode: Int) :
+        var savedImagePath: String? = null
+        val imageFileName = "Meme " + Random.nextInt() + ".jpg"
+        val storageDir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                .toString() + "/Memes"
+        )
+        var success = true
+        if (!storageDir.exists()) {
+            success = storageDir.mkdirs()
+        }
+        if (success) {
+            val imageFile = File(storageDir, imageFileName)
+            savedImagePath = imageFile.absolutePath
+            try {
+                val fOut: OutputStream = FileOutputStream(imageFile)
+                image.compress(Bitmap.CompressFormat.JPEG, 100, fOut)
+                fOut.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            //Adding image to system gallery
+            galleryAddPic(savedImagePath)
+        }
+        return savedImagePath
+    }
+
+    private fun saveGif(image: GifDrawable): String? {
+
+        var savedImagePath: String? = null
+        val imageFileName = "Meme " + Random.nextInt() + ".gif"
+        val storageDir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                .toString() + "/Memes"
+        )
+        var success = true
+        if (!storageDir.exists()) {
+            success = storageDir.mkdirs()
+        }
+        if (success) {
+            val imageFile = File(storageDir, imageFileName)
+            savedImagePath = imageFile.absolutePath
+            try {
+                val fOut: OutputStream = FileOutputStream(imageFile)
+                val gifBuffer = image.buffer
+                val bytes = ByteArray(gifBuffer.capacity())
+                (gifBuffer.clear() as ByteBuffer).get(bytes)
+
+                fOut.write(bytes, 0, bytes.size)
+                fOut.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            //Adding gif to system gallery
+            galleryAddPic(savedImagePath)
+        }
+        return savedImagePath
+    }
+
+    private fun galleryAddPic(imagePath: String?) {
+        imagePath?.let { path ->
+            val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+            val f = File(path)
+            val contentUri: Uri = Uri.fromFile(f)
+            mediaScanIntent.data = contentUri
+            sendBroadcast(mediaScanIntent)
+        }
+
+    }
+
+
+    class DBAsyncTask(
+        val context: Context,
+        private val memeEntity: MemeEntity,
+        private val mode: Int
+    ) :
         AsyncTask<Void, Void, Boolean>() {
 
         val db = Room.databaseBuilder(context, MemeDatabase::class.java, "memes-db").build()

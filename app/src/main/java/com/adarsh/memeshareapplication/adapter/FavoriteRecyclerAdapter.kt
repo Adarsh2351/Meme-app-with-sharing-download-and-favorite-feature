@@ -30,7 +30,7 @@ class FavoriteRecyclerAdapter(val context: Context, val memeList: List<MemeEntit
     override fun onBindViewHolder(holder: FavoriteViewHolder, position: Int) {
 
         val meme = memeList[position]
-        Picasso.get().load(meme.memeImage).into(holder.imgFavMeme)
+        Picasso.get().load(meme.memeImage).resize(500, 600).into(holder.imgFavMeme)
 
 
         holder.imgFavMeme.setOnClickListener {
